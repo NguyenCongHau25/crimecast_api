@@ -8,10 +8,11 @@ from flask import Flask, request, jsonify, render_template
 
 # --- CÁC IMPORT CẦN THIẾT CHO CUSTOM TRANSFORMERS CỦA BẠN ---
 from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.preprocessing import OrdinalEncoder, StandardScaler, MultiLabelBinarizer # LabelEncoder đã có trong code Flask rồi
+from sklearn.preprocessing import OrdinalEncoder, StandardScaler, MultiLabelBinarizer
 from sklearn.impute import SimpleImputer
 from sklearn.feature_selection import VarianceThreshold
 import warnings # Để dùng warnings.filterwarnings nếu cần trong custom class, dù ở đây không có
+import sys # Cần cho việc alias module
 
 # Thư viện geopy cho DistanceCalculator
 try:
@@ -66,7 +67,6 @@ class VictimAgeImputer(BaseEstimator, TransformerMixin):
         self.median_positive_age_ = None
 
     def fit(self, X, y=None):
-        # Ensure age_col exists, if not, use a default median
         if self.age_col in X.columns:
             positive_ages = X.loc[X[self.age_col] > 0, self.age_col]
             if not positive_ages.empty:
@@ -89,7 +89,7 @@ class VictimAgeImputer(BaseEstimator, TransformerMixin):
         return X_
 
 class DistanceCalculator(BaseEstimator, TransformerMixin):
-    def __init__(self, lat_col='Latitude', lon_col='Longitude', center=CITY_CENTER): # Sử dụng CITY_CENTER đã định nghĩa ở trên
+    def __init__(self, lat_col='Latitude', lon_col='Longitude', center=CITY_CENTER):
         self.lat_col = lat_col; self.lon_col = lon_col; self.center = center; self.median_distance_ = None
 
     def _safe_geodesic(self, row):
@@ -149,70 +149,41 @@ class ModusOperandiBinarizer(BaseEstimator, TransformerMixin):
         try:
             X_encoded = self.mlb.transform(X_split)
         except ValueError:
-            X_encoded = np.zeros((len(X_split), len(self.columns_ if self.columns_ else [])), dtype=int) # Fallback
+            X_encoded = np.zeros((len(X_split), len(self.columns_ if self.columns_ else [])), dtype=int)
         X_encoded_df = pd.DataFrame(X_encoded, columns=self.columns_, index=X_.index)
         if self.mo_col in X_.columns: X_ = X_.drop(self.mo_col, axis=1)
         X_ = pd.concat([X_, X_encoded_df], axis=1); return X_
 
 class CrimeDataPreprocessor(BaseEstimator, TransformerMixin):
     def __init__(self):
-        self.cols_to_drop_initial = [
-            'Location', 'Cross_Street', 'Area_ID', 'Area_Name',
-            'Weapon_Description', 'Premise_Description', 'Status_Description'
-        ]
+        self.cols_to_drop_initial = ['Location', 'Cross_Street', 'Area_ID', 'Area_Name', 'Weapon_Description', 'Premise_Description', 'Status_Description']
         self.cols_to_drop_final = ['Longitude', 'Latitude', 'Time_Occurred']
-        self.col_victim_age = 'Victim_Age'
-        self.col_weapon_code = 'Weapon_Used_Code'
-        self.col_modus_operandi = 'Modus_Operandi'
-        self.cols_mode_impute_cat = ['Victim_Sex', 'Victim_Descent']
-        self.cols_ordinal_encode = ['Victim_Descent', 'Victim_Sex', 'Status']
-
-        self.dt_creator_ = DatetimeFeatureCreator()
-        self.dist_calc_ = DistanceCalculator() # CITY_CENTER sẽ được truyền từ hằng số toàn cục
-        self.victim_age_imputer_ = VictimAgeImputer(age_col=self.col_victim_age)
-        self.mo_binarizer_ = ModusOperandiBinarizer(mo_col=self.col_modus_operandi)
-        self.mode_imputer_cat_ = SimpleImputer(strategy='most_frequent')
-        self.median_imputer_numeric_ = SimpleImputer(strategy='median')
-        self.ordinal_encoder_ = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)
-        self.variance_threshold_ = VarianceThreshold(threshold=1e-4)
-        self.scaler_ = StandardScaler()
-        self.original_input_columns_ = None
-        self.fitted_columns_after_vt_ = None
-        self.mo_columns_ = None
-        self.columns_to_scale_ = None
+        self.col_victim_age = 'Victim_Age'; self.col_weapon_code = 'Weapon_Used_Code'; self.col_modus_operandi = 'Modus_Operandi'
+        self.cols_mode_impute_cat = ['Victim_Sex', 'Victim_Descent']; self.cols_ordinal_encode = ['Victim_Descent', 'Victim_Sex', 'Status']
+        self.dt_creator_ = DatetimeFeatureCreator(); self.dist_calc_ = DistanceCalculator(); self.victim_age_imputer_ = VictimAgeImputer(age_col=self.col_victim_age)
+        self.mo_binarizer_ = ModusOperandiBinarizer(mo_col=self.col_modus_operandi); self.mode_imputer_cat_ = SimpleImputer(strategy='most_frequent')
+        self.median_imputer_numeric_ = SimpleImputer(strategy='median'); self.ordinal_encoder_ = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)
+        self.variance_threshold_ = VarianceThreshold(threshold=1e-4); self.scaler_ = StandardScaler()
+        self.original_input_columns_ = None; self.fitted_columns_after_vt_ = None; self.mo_columns_ = None; self.columns_to_scale_ = None
 
     def _ensure_column_exists(self, df, column_name, default_val=np.nan):
-        if column_name not in df.columns:
-            df[column_name] = default_val
+        if column_name not in df.columns: df[column_name] = default_val
         return df
 
     def fit(self, X, y=None):
         print("Fitting CrimeDataPreprocessor...")
         self.original_input_columns_ = X.columns.tolist()
         X_ = X.copy()
-        # Đảm bảo các cột cơ bản mà các transformer sẽ dùng đều có mặt
-        essential_cols = ['Date_Occurred', 'Date_Reported', 'Latitude', 'Longitude',
-                          self.col_victim_age, self.col_weapon_code, self.col_modus_operandi] \
-                         + self.cols_mode_impute_cat + self.cols_ordinal_encode
-        for col in essential_cols:
-            X_ = self._ensure_column_exists(X_, col)
-
+        essential_cols = ['Date_Occurred', 'Date_Reported', 'Latitude', 'Longitude', self.col_victim_age, self.col_weapon_code, self.col_modus_operandi] + self.cols_mode_impute_cat + self.cols_ordinal_encode
+        for col in essential_cols: X_ = self._ensure_column_exists(X_, col)
         X_.drop(columns=self.cols_to_drop_initial, inplace=True, errors='ignore')
-
-        self.dist_calc_.fit(X_)
-        X_temp_transform = self.dist_calc_.transform(X_)
-        self.dt_creator_.fit(X_temp_transform)
-        X_temp_transform = self.dt_creator_.transform(X_temp_transform)
-        self.victim_age_imputer_.fit(X_temp_transform)
-        X_temp_transform = self.victim_age_imputer_.transform(X_temp_transform)
+        self.dist_calc_.fit(X_); X_temp_transform = self.dist_calc_.transform(X_)
+        self.dt_creator_.fit(X_temp_transform); X_temp_transform = self.dt_creator_.transform(X_temp_transform)
+        self.victim_age_imputer_.fit(X_temp_transform); X_temp_transform = self.victim_age_imputer_.transform(X_temp_transform)
         X_temp_transform[self.col_weapon_code] = X_temp_transform[self.col_weapon_code].fillna(-1)
-        self.mo_binarizer_.fit(X_temp_transform)
-        self.mo_columns_ = self.mo_binarizer_.columns_
-        X_temp_transform = self.mo_binarizer_.transform(X_temp_transform)
-        self.mode_imputer_cat_.fit(X_temp_transform[self.cols_mode_impute_cat])
-        X_temp_transform[self.cols_mode_impute_cat] = self.mode_imputer_cat_.transform(X_temp_transform[self.cols_mode_impute_cat])
-        self.ordinal_encoder_.fit(X_temp_transform[self.cols_ordinal_encode])
-        X_temp_transform[self.cols_ordinal_encode] = self.ordinal_encoder_.transform(X_temp_transform[self.cols_ordinal_encode])
+        self.mo_binarizer_.fit(X_temp_transform); self.mo_columns_ = self.mo_binarizer_.columns_; X_temp_transform = self.mo_binarizer_.transform(X_temp_transform)
+        self.mode_imputer_cat_.fit(X_temp_transform[self.cols_mode_impute_cat]); X_temp_transform[self.cols_mode_impute_cat] = self.mode_imputer_cat_.transform(X_temp_transform[self.cols_mode_impute_cat])
+        self.ordinal_encoder_.fit(X_temp_transform[self.cols_ordinal_encode]); X_temp_transform[self.cols_ordinal_encode] = self.ordinal_encoder_.transform(X_temp_transform[self.cols_ordinal_encode])
         X_temp_transform.drop(columns=self.cols_to_drop_final, inplace=True, errors='ignore')
         numeric_cols = X_temp_transform.select_dtypes(include=np.number).columns.tolist()
         numeric_cols_for_impute = [col for col in numeric_cols if not (self.mo_columns_ and col in self.mo_columns_)]
@@ -220,14 +191,11 @@ class CrimeDataPreprocessor(BaseEstimator, TransformerMixin):
             self.median_imputer_numeric_.fit(X_temp_transform[numeric_cols_for_impute])
             X_temp_transform[numeric_cols_for_impute] = self.median_imputer_numeric_.transform(X_temp_transform[numeric_cols_for_impute])
         else: self.median_imputer_numeric_ = None
-        if X_temp_transform.empty:
-            self.fitted_columns_after_vt_ = []; self.columns_to_scale_ = []; self.scaler_ = None; return self
-        self.variance_threshold_.fit(X_temp_transform)
-        self.fitted_columns_after_vt_ = X_temp_transform.columns[self.variance_threshold_.get_support()].tolist()
+        if X_temp_transform.empty: self.fitted_columns_after_vt_ = []; self.columns_to_scale_ = []; self.scaler_ = None; return self
+        self.variance_threshold_.fit(X_temp_transform); self.fitted_columns_after_vt_ = X_temp_transform.columns[self.variance_threshold_.get_support()].tolist()
         X_temp_transform = X_temp_transform[self.fitted_columns_after_vt_]
         self.columns_to_scale_ = [col for col in self.fitted_columns_after_vt_ if not (self.mo_columns_ and col in self.mo_columns_)]
-        if self.columns_to_scale_ and not X_temp_transform[self.columns_to_scale_].empty:
-            self.scaler_.fit(X_temp_transform[self.columns_to_scale_])
+        if self.columns_to_scale_ and not X_temp_transform[self.columns_to_scale_].empty: self.scaler_.fit(X_temp_transform[self.columns_to_scale_])
         else: self.scaler_ = None; self.columns_to_scale_ = []
         print(f"CrimeDataPreprocessor fit complete. Features after VT: {len(self.fitted_columns_after_vt_)}")
         return self
@@ -235,24 +203,17 @@ class CrimeDataPreprocessor(BaseEstimator, TransformerMixin):
     def transform(self, X):
         print(f"Transforming with CrimeDataPreprocessor... Input shape: {X.shape}")
         X_ = X.copy()
-        if self.original_input_columns_: # Đảm bảo các cột từ lúc fit có mặt
+        if self.original_input_columns_:
             for col in self.original_input_columns_:
                 if col not in X_.columns: X_[col] = np.nan
         X_.drop(columns=self.cols_to_drop_initial, inplace=True, errors='ignore')
-        essential_cols = ['Date_Occurred', 'Date_Reported', 'Latitude', 'Longitude',
-                          self.col_victim_age, self.col_weapon_code, self.col_modus_operandi] \
-                         + self.cols_mode_impute_cat + self.cols_ordinal_encode
+        essential_cols = ['Date_Occurred', 'Date_Reported', 'Latitude', 'Longitude', self.col_victim_age, self.col_weapon_code, self.col_modus_operandi] + self.cols_mode_impute_cat + self.cols_ordinal_encode
         for col in essential_cols: X_ = self._ensure_column_exists(X_, col)
-
-        X_ = self.dist_calc_.transform(X_)
-        X_ = self.dt_creator_.transform(X_)
-        X_ = self.victim_age_imputer_.transform(X_)
-        X_[self.col_weapon_code] = X_[self.col_weapon_code].fillna(-1)
-        X_ = self.mo_binarizer_.transform(X_)
+        X_ = self.dist_calc_.transform(X_); X_ = self.dt_creator_.transform(X_); X_ = self.victim_age_imputer_.transform(X_)
+        X_[self.col_weapon_code] = X_[self.col_weapon_code].fillna(-1); X_ = self.mo_binarizer_.transform(X_)
         X_[self.cols_mode_impute_cat] = self.mode_imputer_cat_.transform(X_[self.cols_mode_impute_cat])
         X_[self.cols_ordinal_encode] = self.ordinal_encoder_.transform(X_[self.cols_ordinal_encode])
         X_.drop(columns=self.cols_to_drop_final, inplace=True, errors='ignore')
-
         if self.median_imputer_numeric_ and hasattr(self.median_imputer_numeric_, 'feature_names_in_'):
             expected_numeric_cols = [c for c in self.median_imputer_numeric_.feature_names_in_ if not (self.mo_columns_ and c in self.mo_columns_)]
             for col in expected_numeric_cols:
@@ -260,16 +221,14 @@ class CrimeDataPreprocessor(BaseEstimator, TransformerMixin):
                     try: idx = list(self.median_imputer_numeric_.feature_names_in_).index(col); X_[col] = self.median_imputer_numeric_.statistics_[idx]
                     except (ValueError, IndexError): X_[col] = 0
             cols_to_impute_now = [c for c in expected_numeric_cols if c in X_.columns]
-            if cols_to_impute_now and not X_[cols_to_impute_now].empty:
-                X_[cols_to_impute_now] = self.median_imputer_numeric_.transform(X_[cols_to_impute_now])
+            if cols_to_impute_now and not X_[cols_to_impute_now].empty: X_[cols_to_impute_now] = self.median_imputer_numeric_.transform(X_[cols_to_impute_now])
         cols_to_keep_after_vt = []
-        if self.fitted_columns_after_vt_ is not None: # VT đã được fit
-            # Đảm bảo các MO columns (nếu có) tồn tại trước khi chọn theo VT
+        if self.fitted_columns_after_vt_ is not None:
             if self.mo_columns_:
                 for mo_col in self.mo_columns_:
-                    if mo_col not in X_.columns: X_[mo_col] = 0 # Thêm MO columns nếu thiếu
+                    if mo_col not in X_.columns: X_[mo_col] = 0
             for col_vt in self.fitted_columns_after_vt_:
-                if col_vt not in X_.columns: X_[col_vt] = 0 # Thêm cột được VT chọn nếu thiếu
+                if col_vt not in X_.columns: X_[col_vt] = 0
                 cols_to_keep_after_vt.append(col_vt)
             if cols_to_keep_after_vt: X_ = X_[cols_to_keep_after_vt]
             elif not X_.empty : X_ = pd.DataFrame(index=X_.index)
@@ -278,14 +237,42 @@ class CrimeDataPreprocessor(BaseEstimator, TransformerMixin):
             for col_s in self.columns_to_scale_:
                 if col_s not in X_.columns: X_[col_s] = 0.0
                 cols_to_scale_now.append(col_s)
-            if cols_to_scale_now and not X_[cols_to_scale_now].empty:
-                 X_[cols_to_scale_now] = self.scaler_.transform(X_[cols_to_scale_now])
+            if cols_to_scale_now and not X_[cols_to_scale_now].empty: X_[cols_to_scale_now] = self.scaler_.transform(X_[cols_to_scale_now])
         print(f"CrimeDataPreprocessor transform complete. Output shape: {X_.shape}")
         return X_
 
 # ==============================================================================
 # >>> KẾT THÚC PHẦN CUSTOM TRANSFORMERS <<<
 # ==============================================================================
+
+# --- BEGIN: WORKAROUND FOR __main__ PICKLE ISSUE ---
+# This ensures that if the model was saved when these classes were in __main__,
+# they can be found when Gunicorn (or another WSGI server) imports this file (app.py).
+# This block must be BEFORE joblib.load().
+if __name__ != '__main__':
+    # Get the current module (e.g., 'app' when run by Gunicorn)
+    current_module = sys.modules[__name__]
+    # Get the __main__ module
+    main_module = sys.modules['__main__']
+
+    # List of your custom classes that might have been pickled under __main__
+    custom_classes_to_alias = [
+        'DatetimeFeatureCreator',
+        'VictimAgeImputer',
+        'DistanceCalculator',
+        'ModusOperandiBinarizer',
+        'CrimeDataPreprocessor'
+        # Add any other custom classes from this file that are part of your pipeline
+    ]
+
+    for class_name in custom_classes_to_alias:
+        if hasattr(current_module, class_name):
+            setattr(main_module, class_name, getattr(current_module, class_name))
+            print(f"Aliased {class_name} to __main__.{class_name}")
+        else:
+            print(f"Warning: Class {class_name} not found in module {__name__} for aliasing.")
+# --- END: WORKAROUND FOR __main__ PICKLE ISSUE ---
+
 
 # Khởi tạo ứng dụng Flask
 app = Flask(__name__)
@@ -302,9 +289,11 @@ try:
     print(f"Attempting to load pipeline model from: {PIPELINE_MODEL_PATH}")
     model_pipeline = joblib.load(PIPELINE_MODEL_PATH)
     print("Pipeline model loaded successfully!")
+
     print(f"Attempting to load label encoder from: {LABEL_ENCODER_PATH}")
     label_encoder_y = joblib.load(LABEL_ENCODER_PATH)
     print("Label encoder loaded successfully!")
+
 except FileNotFoundError as e:
     print(f"MODEL LOADING ERROR - FileNotFoundError: {e}.")
 except ModuleNotFoundError as e:
