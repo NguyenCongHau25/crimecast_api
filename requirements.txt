@@ -1,0 +1,9 @@
+Flask
+gunicorn
+scikit-learn
+pandas
+numpy
+joblib
+lightgbm
+xgboost
+geopy

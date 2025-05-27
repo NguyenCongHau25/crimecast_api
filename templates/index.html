@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Crime Category Prediction</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap');
+
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    margin: 0; padding: 30px 15px; /* Giữ padding cho body */
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+    background: linear-gradient(270deg, #72e2ff, #38a9ff, #2c77ff);
+    background-size: 600% 600%;
+    animation: bgMove 20s ease infinite;
+    color: #112240; /* Màu chữ này sẽ không thấy nhiều vì container có màu nền riêng */
+    box-sizing: border-box;
+  }
+
+  @keyframes bgMove {
+    0%{background-position:0% 50%}
+    50%{background-position:100% 50%}
+    100%{background-position:0% 50%}
+  }
+
+  .container {
+    background: linear-gradient(135deg, rgba(11, 35, 73, 0.95) 0%, rgba(18, 47, 102, 0.98) 100%); /* Tăng nhẹ opacity */
+    border-radius: 22px;
+    box-shadow:
+      0 12px 28px rgba(10, 34, 77, 0.8),
+      0 4px 15px rgba(18, 47, 102, 0.7);
+    max-width: 960px; /* Giữ nguyên max-width */
+    width: 100%;
+    padding: 40px 50px; /* Điều chỉnh padding container */
+    color: #e0e8f9;
+    backdrop-filter: saturate(160%) blur(12px);
+    box-sizing: border-box;
+    transition: box-shadow 0.3s ease-out;
+  }
+  .container:hover {
+    box-shadow:
+      0 18px 36px rgba(10, 34, 77, 0.9),
+      0 6px 18px rgba(18, 47, 102, 0.8);
+  }
+
+  h1 {
+    text-align: center;
+    margin-top: 0; /* Bỏ margin top nếu padding container đã đủ */
+    margin-bottom: 32px;
+    font-weight: 700;
+    font-size: 2.6rem;
+    letter-spacing: 1.2px;
+    color: #acc2ff;
+    text-shadow: 0 2px 7px rgba(66, 133, 244, 0.55);
+  }
+  form#crimePredictionForm { /* Nhắm trực tiếp vào form bằng ID */
+    display: grid;
+    /* Sử dụng 3 cột cho màn hình lớn hơn, tự động điều chỉnh cho màn hình nhỏ hơn */
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 24px 35px; /* row-gap column-gap */
+  }
+  label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #a3b4d4;
+    font-size: 0.9rem; /* Giảm nhẹ font label */
+  }
+  input[type="text"], input[type="number"], input[type="date"] {
+    width: 100%;
+    padding: 13px 17px; /* Điều chỉnh padding input */
+    border-radius: 12px; /* Bo góc mềm hơn */
+    border: 1.5px solid #295092; /* Border nhất quán */
+    font-size: 0.95rem; /* Font input */
+    background: #18315e;
+    color: #d9e3f0;
+    box-shadow: inset 0 1px 5px rgba(24, 49, 94, 0.65);
+    transition:
+      border-color 0.25s ease,
+      box-shadow 0.25s ease,
+      transform 0.18s ease,
+      background-color 0.25s ease;
+    box-sizing: border-box;
+  }
+  input[type="text"]:focus,
+  input[type="number"]:focus,
+  input[type="date"]:focus {
+    outline: none;
+    border-color: #5c8dff; /* Màu focus sáng hơn */
+    background: #213c6e;
+    box-shadow: 0 0 0 3.5px rgba(73, 115, 210, 0.4), inset 0 1px 5px rgba(35, 64, 126, 0.85);
+    transform: scale(1.03); /* Hiệu ứng scale nhẹ khi focus */
+  }
+
+  button[type="submit"] {
+    grid-column: 1 / -1; /* Nút submit chiếm toàn bộ các cột */
+    background: linear-gradient(135deg, #1f3a83 0%, #4059a9 100%);
+    color: #e0e8f9;
+    padding: 17px 0;
+    border: none;
+    font-size: 1.2rem; /* Font nút */
+    font-weight: 700;
+    border-radius: 16px;
+    cursor: pointer;
+    box-shadow:
+      0 9px 25px rgba(31, 58, 131, 0.8),
+      0 5px 14px rgba(64, 89, 169, 0.7);
+    transition:
+      background 0.3s ease,
+      box-shadow 0.25s ease,
+      transform 0.12s ease;
+    letter-spacing: 1.1px;
+  }
+  button[type="submit"]:hover {
+    background: linear-gradient(135deg, #2c4cc7 0%, #6280f7 100%);
+    box-shadow:
+      0 14px 35px rgba(44, 76, 199, 0.9),
+      0 9px 22px rgba(98, 128, 247, 0.8);
+    transform: translateY(-3.5px);
+  }
+  button[type="submit"]:active {
+    transform: translateY(-1.5px);
+    box-shadow:
+      0 6px 20px rgba(44, 76, 199, 0.75),
+      0 4px 12px rgba(98, 128, 247, 0.65);
+  }
+  .result {
+    margin-top: 32px;
+    /* grid-column: 1 / -1; Bỏ đi nếu nó nằm ngoài form và là block element */
+    background: rgba(26, 46, 89, 0.9);
+    border-radius: 14px;
+    padding: 18px 26px;
+    color: #b8cfff; /* Màu chữ kết quả */
+    font-weight: 600;
+    font-size: 1.25rem;
+    text-align: center;
+    letter-spacing: 0.7px;
+    box-shadow: inset 0 0 12px rgba(73, 115, 210, 0.65);
+    border: 1px solid #30589f;
+  }
+  .result.hidden {
+      display: none;
+  }
+
+  @media (max-width: 768px) { /* Điều chỉnh cho tablet và điện thoại lớn */
+    form#crimePredictionForm {
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); /* Điều chỉnh minmax cho màn hình nhỏ hơn */
+      gap: 20px 28px;
+    }
+    .container {
+        padding: 35px 30px;
+    }
+     h1 { font-size: 2.2rem; }
+  }
+
+  @media (max-width: 500px) { /* Điều chỉnh cho điện thoại */
+    body { padding: 20px 10px; }
+    .container { padding: 30px 20px; }
+    form#crimePredictionForm {
+      grid-template-columns: 1fr; /* Một cột */
+      gap: 18px;
+    }
+     h1 { font-size: 1.9rem; margin-bottom: 24px; }
+    input[type="text"], input[type="number"], input[type="date"] { padding: 11px 15px; font-size: 0.95rem; }
+    button[type="submit"] { padding: 15px 0; font-size: 1.15rem; }
+    .result { font-size: 1.1rem; padding: 16px 22px; }
+  }
+</style>
+</head>
+<body>
+  <main class="container" role="main" aria-label="Crime category prediction form">
+    <h1>Crime Category Prediction</h1>
+    <!-- ID của form là 'crimePredictionForm' để khớp với JavaScript -->
+    <form id="crimePredictionForm" aria-describedby="predictionResultOutput">
+        <!-- Các trường input sẽ được đặt trực tiếp bên trong form (đã là grid) -->
+        <!-- Hàng 1 -->
+        <div>
+          <label for="Date_Occurred">Date Occurred:</label>
+          <input type="date" id="Date_Occurred" name="Date_Occurred" required aria-required="true" value="2023-11-01"/>
+        </div>
+        <div>
+          <label for="Date_Reported">Date Reported:</label>
+          <input type="date" id="Date_Reported" name="Date_Reported" required aria-required="true" value="2023-11-01"/>
+        </div>
+        <div>
+          <label for="Time_Occurred">Time Occurred (0-2359):</label>
+          <input type="number" id="Time_Occurred" name="Time_Occurred" min="0" max="2359" required aria-required="true" value="2200"/>
+        </div>
+
+        <!-- Hàng 2 -->
+        <div>
+          <label for="Area_ID">Area ID:</label>
+          <input type="number" id="Area_ID" name="Area_ID" value="7"/>
+        </div>
+        <div>
+          <label for="Area_Name">Area Name:</label>
+          <input type="text" id="Area_Name" name="Area_Name" value="Wilshire"/>
+        </div>
+        <div>
+          <label for="Reporting_District">Reporting District:</label>
+          <!-- Giả sử tên cột trong dữ liệu của bạn là 'Reporting_District' -->
+          <!-- Nếu là 'Reporting_District_no', hãy đổi name="Reporting_District_no" -->
+          <input type="text" id="Reporting_District" name="Reporting_District" value="711"/>
+        </div>
+
+        <!-- Hàng 3 -->
+        <div>
+          <label for="Part_1_2">Part 1-2 (1 or 2):</label>
+          <!-- Tên cột có dấu cách và gạch nối, đảm bảo backend xử lý được -->
+          <input type="number" id="Part_1_2" name="Part 1-2" min="1" max="2" value="1"/>
+        </div>
+        <div>
+          <label for="Modus_Operandi">Modus Operandi (codes by space):</label>
+          <input type="text" id="Modus_Operandi" name="Modus_Operandi" value="1101 0344"/>
+        </div>
+        <div>
+          <label for="Victim_Age">Victim Age:</label>
+          <input type="number" id="Victim_Age" name="Victim_Age" min="0" max="120" value="25"/>
+        </div>
+
+        <!-- Hàng 4 -->
+        <div>
+          <label for="Victim_Sex">Victim Sex (F, M, X, H):</label>
+          <input type="text" id="Victim_Sex" name="Victim_Sex" maxlength="1" value="F"/>
+        </div>
+        <div>
+          <label for="Victim_Descent">Victim Descent (W, H, B, O, A..):</label>
+          <input type="text" id="Victim_Descent" name="Victim_Descent" maxlength="1" value="W"/>
+        </div>
+        <div>
+          <label for="Premise_Code">Premise Code:</label>
+          <input type="text" id="Premise_Code" name="Premise_Code" value="101"/>
+        </div>
+
+        <!-- Hàng 5 -->
+        <div>
+          <label for="Premise_Description">Premise Description:</label>
+          <input type="text" id="Premise_Description" name="Premise_Description" value="SINGLE FAMILY DWELLING"/>
+        </div>
+        <div>
+          <label for="Weapon_Used_Code">Weapon Used Code:</label>
+          <input type="text" id="Weapon_Used_Code" name="Weapon_Used_Code" value="400"/>
+        </div>
+        <div>
+          <label for="Weapon_Description">Weapon Description:</label>
+          <input type="text" id="Weapon_Description" name="Weapon_Description" value="UNKNOWN WEAPON/OTHER BODILY WEAPON"/>
+        </div>
+
+        <!-- Hàng 6 -->
+        <div>
+          <label for="Status">Status (IC, AO, AA, JA, JO..):</label>
+          <input type="text" id="Status" name="Status" maxlength="2" value="IC"/>
+        </div>
+        <div>
+          <label for="Status_Description">Status Description:</label>
+          <input type="text" id="Status_Description" name="Status_Description" value="INVEST CONT"/>
+        </div>
+        <div>
+          <label for="Location">Location (Address):</label>
+          <input type="text" id="Location" name="Location" value="123 MAIN ST"/>
+        </div>
+
+        <!-- Hàng 7 -->
+        <div>
+          <label for="Cross_Street">Cross Street:</label>
+          <input type="text" id="Cross_Street" name="Cross_Street" value="OAK ST"/>
+        </div>
+        <div>
+          <label for="Latitude">Latitude:</label>
+          <input type="text" id="Latitude" name="Latitude" required aria-required="true" value="34.0522" />
+        </div>
+        <div>
+          <label for="Longitude">Longitude:</label>
+          <input type="text" id="Longitude" name="Longitude" required aria-required="true" value="-118.2437" />
+        </div>
+      <!-- Kết thúc các div chứa input -->
+      <button type="submit">Get Prediction</button>
+    </form>
+
+    <!-- ID của div kết quả là 'predictionResultOutput' để khớp với JavaScript -->
+    <div id="predictionResultOutput" class="result hidden" aria-live="polite">
+      <!-- Kết quả dự đoán sẽ được hiển thị ở đây -->
+    </div>
+  </main>
+
+<script>
+document.getElementById('crimePredictionForm').addEventListener('submit', function(event) {
+    event.preventDefault();
+
+    const formData = new FormData(this);
+    const data = {};
+    // QUAN TRỌNG: Cập nhật danh sách này để khớp với thuộc tính 'name' ĐÚNG của các trường số
+    const numberFields = [
+        'Time_Occurred', 'Victim_Age', 'Latitude', 'Longitude',
+        'Area_ID', 'Reporting_District', // Nếu tên cột là 'Reporting_District_no', hãy sửa ở đây và trong HTML
+        'Part 1-2', // Nếu tên cột là 'Part 1-2', hãy sửa ở đây và trong HTML
+        'Premise_Code', // Nếu đây là số
+        'Weapon_Used_Code' // Nếu đây là số
+    ];
+
+    formData.forEach((value, key) => {
+        const trimmedValue = value.trim();
+        if (trimmedValue !== '') {
+            if (numberFields.includes(key) && trimmedValue !== '' && !isNaN(parseFloat(trimmedValue))) {
+                data[key] = Number(trimmedValue);
+            } else {
+                data[key] = trimmedValue;
+            }
+        }
+    });
+
+    console.log("Data being sent to /predict:", JSON.stringify(data, null, 2));
+
+    const resultDiv = document.getElementById('predictionResultOutput');
+    resultDiv.classList.add('hidden');
+    resultDiv.textContent = 'Loading prediction...';
+    resultDiv.classList.remove('hidden');
+
+    fetch('/predict', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+    })
+    .then(response => {
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+            return response.json().then(responseData => {
+                if (!response.ok) {
+                    let errorMessage = `Server error: ${response.status}`;
+                    if (responseData && responseData.error) {
+                        errorMessage = responseData.error;
+                        if (responseData.details) {
+                            errorMessage += ` (Details: ${responseData.details})`;
+                        }
+                    }
+                    throw new Error(errorMessage);
+                }
+                return responseData;
+            });
+        } else {
+            return response.text().then(textData => {
+                 throw new Error(`Received non-JSON response: ${response.status} - ${textData.substring(0,100)}...`);
+            });
+        }
+    })
+    .then(prediction => {
+        if (prediction && prediction.predicted_crime_category) {
+            resultDiv.textContent = 'Predicted Crime Category: ' + prediction.predicted_crime_category;
+        } else if (prediction && prediction.error) {
+             resultDiv.textContent = 'Error from server: ' + prediction.error + (prediction.details ? ` (${prediction.details})` : '');
+        } else {
+            resultDiv.textContent = 'Received an unexpected response format from server.';
+            console.log("Received prediction object from server:", prediction);
+        }
+        resultDiv.classList.remove('hidden');
+    })
+    .catch((error) => {
+        console.error('Fetch Error:', error);
+        resultDiv.textContent = 'Error: ' + error.message;
+        resultDiv.classList.remove('hidden');
+    });
+});
+</script>
+</body>
+</html>
